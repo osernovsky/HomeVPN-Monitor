@@ -21,7 +21,8 @@ jobs:
           $required = @(
             'README.md', 'AGENTS.md', 'ROADMAP.md', 'SECURITY.md', '.gitignore',
             'docs/SPECIFICATION.md', 'docs/ARCHITECTURE.md', 'docs/DEVELOPMENT.md',
-            'docs/decisions/0001-programming-language.md'
+            'docs/decisions/0001-programming-language.md',
+            'docs/decisions/0002-project-license.md', 'LICENSE'
           )
           foreach ($path in $required) {
             if (!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path -Force).Length -eq 0) {
