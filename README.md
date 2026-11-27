@@ -1,2 +1,21 @@
-# HomeVPN-Monitor
-Self-hosted VPN subscription monitoring and reliability analysis
+# HomeVPN Monitor
+
+HomeVPN Monitor — автономный сервис для проверки VPN-узлов из домашней сети и просмотра истории их доступности в веб-панели. Проект находится на этапе подготовки. Установочной версии пока нет.
+
+Сервис будет выполнять проверки в домашнем DEV LXC через Xray-core и хранить результаты локально в SQLite. Веб-панель покажет состояние узлов, задержку и историю. Оператор самостоятельно выбирает узел и переносит его настройку в HydraRoute. VPS используется только как reverse proxy веб-панели.
+
+## Документация
+
+- [Спецификация](docs/SPECIFICATION.md)
+- [Архитектура](docs/ARCHITECTURE.md)
+- [Разработка](docs/DEVELOPMENT.md)
+- [ADR 0001 — выбор Go](docs/decisions/0001-programming-language.md)
+- [Дорожная карта](ROADMAP.md)
+- [Правила безопасности](SECURITY.md)
+- [Инструкции для Codex](AGENTS.md)
+
+## Лицензия
+
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0) предложена для материалов проекта. Решение ожидает утверждения владельцем. До утверждения файл LICENSE отсутствует.
+
+Xray-core распространяется под [MPL-2.0](https://github.com/XTLS/Xray-core/blob/main/LICENSE). Если ядро будет включено в релиз, для выбранной версии потребуется проверить уведомления, доступность исходного кода и дополнительные условия поставки.

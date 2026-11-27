@@ -1,0 +1,42 @@
+# Build and coverage
+/bin/
+/dist/
+/coverage/
+*.exe
+*.test
+*.out
+coverage.xml
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+/config/local/
+/secrets/
+/subscriptions/
+*.local.json
+*.local.yaml
+*.local.yml
+*.local.toml
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Runtime state and logs
+/data/
+/state/
+/logs/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.log
+
+# Editor and OS
+/.idea/
+/.vscode/
+.DS_Store
+Thumbs.db

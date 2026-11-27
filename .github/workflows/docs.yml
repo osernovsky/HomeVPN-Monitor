@@ -1,0 +1,30 @@
+name: Docs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Check foundation files
+        shell: pwsh
+        run: |
+          $required = @(
+            'README.md', 'AGENTS.md', 'ROADMAP.md', 'SECURITY.md', '.gitignore',
+            'docs/SPECIFICATION.md', 'docs/ARCHITECTURE.md', 'docs/DEVELOPMENT.md',
+            'docs/decisions/0001-programming-language.md'
+          )
+          foreach ($path in $required) {
+            if (!(Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item -LiteralPath $path -Force).Length -eq 0) {
+              throw "Missing or empty file: $path"
+            }
+          }
