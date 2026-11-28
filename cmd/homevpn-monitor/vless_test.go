@@ -14,6 +14,24 @@ import (
 	"testing"
 )
 
+const syntheticPacketUpExtra = `{
+  "path": "/stream",
+  "xmux": {"maxConcurrency": "16-32", "hMaxRequestTimes": "600-900"},
+  "xPaddingBytes": "100-1000",
+  "xPaddingObfsMode": true,
+  "xPaddingPlacement": "queryInHeader",
+  "xPaddingMethod": "tokenish",
+  "noGRPCHeader": true,
+  "sessionIDPlacement": "cookie",
+  "sessionIDKey": "test-session",
+  "seqPlacement": "cookie",
+  "seqKey": "test-sequence",
+  "uplinkHTTPMethod": "HEAD",
+  "uplinkDataPlacement": "body",
+  "scMaxEachPostBytes": 1000000,
+  "scMinPostsIntervalMs": 30
+}`
+
 func syntheticRealityPassword(t *testing.T) string {
 	t.Helper()
 	key, err := ecdh.X25519().NewPrivateKey(bytes.Repeat([]byte{7}, 32))
@@ -51,7 +69,7 @@ func TestParseVLESSReality(t *testing.T) {
 func TestParseVLESSOtherTransports(t *testing.T) {
 	t.Run("XHTTP", func(t *testing.T) {
 		raw := "type=xhttp&path=%2Fdemo%2520path&host=edge.example.invalid&mode=stream-up&" +
-			"extra=" + url.QueryEscape(`{"xPaddingBytes":"100-120","noGRPCHeader":true}`)
+			"extra=" + url.QueryEscape(`{"path":"/demo%20path","xPaddingBytes":"100-120","noGRPCHeader":true}`)
 		out, err := parseVLESS(syntheticLink(443, raw))
 		if err != nil {
 			t.Fatal(err)
@@ -62,7 +80,8 @@ func TestParseVLESSOtherTransports(t *testing.T) {
 			t.Fatal("incorrect XHTTP settings")
 		}
 		extra, ok := options["extra"].(map[string]json.RawMessage)
-		if !ok || string(extra["noGRPCHeader"]) != "true" || string(extra["xPaddingBytes"]) != `"100-120"` {
+		if !ok || string(extra["path"]) != `"/demo%20path"` ||
+			string(extra["noGRPCHeader"]) != "true" || string(extra["xPaddingBytes"]) != `"100-120"` {
 			t.Fatal("expected the decoded XHTTP extra object")
 		}
 	})
@@ -149,6 +168,8 @@ func TestXrayAcceptsGeneratedVLESSConfigs(t *testing.T) {
 		{"TCP REALITY", "type=tcp&flow=xtls-rprx-vision&" + reality},
 		{"XHTTP REALITY", "type=xhttp&path=%2Fdemo&mode=stream-up&extra=" +
 			url.QueryEscape(`{"xPaddingBytes":"100-120","noGRPCHeader":true}`) + "&" + reality},
+		{"XHTTP TLS packet-up with exported extra", "type=xhttp&security=tls&alpn=h2&mode=packet-up&path=%2Fstream&extra=" +
+			url.QueryEscape(strings.ReplaceAll(syntheticPacketUpExtra, "\n", ""))},
 		{"gRPC TLS", "type=grpc&mode=multi&serviceName=demo&security=tls&alpn=h2"},
 		{"WebSocket TLS", "type=ws&path=%2Fdemo%3Fed%3D2560&security=tls&alpn=http%2F1.1"},
 	} {

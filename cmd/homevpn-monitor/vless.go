@@ -214,11 +214,11 @@ func vlessXHTTP(params vlessParams) (map[string]any, error) {
 		}
 		for key := range extra {
 			switch strings.ToLower(key) {
-			case "downloadsettings", "extra", "host", "path", "mode":
-				// A separate downstream can introduce another endpoint and stream configuration.
+			case "downloadsettings", "extra":
 				return nil, errUnsupportedVLESS
 			}
 		}
+		// Xray takes host, path and mode from the outer XHTTP settings.
 		options["extra"] = extra
 	}
 	return options, nil
