@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -25,8 +26,8 @@ const syntheticID = "00000000-0000-4000-8000-000000000003"
 func TestCLIRejectsSecretInArguments(t *testing.T) {
 	var output bytes.Buffer
 	code := runCLI(t.Context(), []string{
-		"-config", "synthetic.json", "-url", "https://example.invalid/?token=synthetic-only",
-	}, &output)
+		"-vless-file", "-", "-url", "https://example.invalid/?token=synthetic-only",
+	}, strings.NewReader(""), &output)
 	if code != 2 || output.String() != "{\"status\":\"error\",\"error_category\":\"invalid_arguments\"}\n" {
 		t.Fatal("expected only an anonymous argument error")
 	}
@@ -34,8 +35,12 @@ func TestCLIRejectsSecretInArguments(t *testing.T) {
 
 func TestClientConfig(t *testing.T) {
 	dir := t.TempDir()
-	source := writeFixture(t, dir, "source.json", syntheticClient(12345, "raw"), 0o600)
-	outbound, err := readVLESSOutbound(source)
+	source := writeFixture(t, dir, "node.txt", syntheticLink(12345, "type=tcp")+"\n", 0o600)
+	uri, err := readPrivateText(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, err := parseVLESS(uri)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +73,7 @@ func TestClientConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(config.Routing) != 0 || len(config.Outbounds) != 1 || config.Outbounds[0].Protocol != "vless" {
-		t.Fatal("temporary config must contain one VLESS outbound and no imported routing")
+		t.Fatal("temporary config must contain one VLESS outbound without additional routes")
 	}
 	if len(config.Inbounds) != 1 {
 		t.Fatal("expected exactly one generated inbound")
@@ -82,29 +87,8 @@ func TestClientConfig(t *testing.T) {
 	if err := os.Chmod(source, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readVLESSOutbound(source); !errors.Is(err, errInvalidConfig) {
-		t.Fatal("expected rejection of a config readable by other users")
-	}
-}
-
-func TestSingleVLESSNode(t *testing.T) {
-	tests := []struct {
-		name string
-		raw  string
-		want bool
-	}{
-		{"compact", `{"address":"example.invalid","port":443,"id":"synthetic"}`, true},
-		{"vnext", `{"vnext":[{"address":"example.invalid","port":443,"users":[{"id":"synthetic"}]}]}`, true},
-		{"multiple nodes", `{"vnext":[{},{}]}`, false},
-		{"multiple users", `{"vnext":[{"address":"example.invalid","port":443,"users":[{"id":"synthetic"},{"id":"synthetic"}]}]}`, false},
-		{"reverse proxy", `{"address":"example.invalid","port":443,"id":"synthetic","reverse":{}}`, false},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			if got := singleVLESSNode(json.RawMessage(test.raw)); got != test.want {
-				t.Fatalf("got %t, want %t", got, test.want)
-			}
-		})
+	if _, err := readPrivateText(source); err == nil {
+		t.Fatal("expected rejection of a URI file readable by other users")
 	}
 }
 
@@ -242,16 +226,8 @@ func startSyntheticServer(t *testing.T, binary string) int {
 	}
 }
 
-func syntheticClient(port int, network string) string {
-	return fmt.Sprintf(`{
-		"inbounds":[{"listen":"127.0.0.1","port":23456,"protocol":"socks"}],
-		"outbounds":[{"protocol":"freedom","tag":"direct"},
-			{"protocol":"vless","tag":"probe",
-			"settings":{"vnext":[{"address":"127.0.0.1","port":%d,
-				"users":[{"id":%q,"encryption":"none"}]}]},
-			"streamSettings":{"network":%q,"security":"none"}}],
-		"routing":{"rules":[{"type":"field","network":"tcp","outboundTag":"direct"}]}
-	}`, port, syntheticID, network)
+func syntheticLink(port int, query string) string {
+	return fmt.Sprintf("vless://%s@127.0.0.1:%d?%s", syntheticID, port, query)
 }
 
 func syntheticOptions(t *testing.T, binary string, port int, network string, handler http.HandlerFunc) probeOptions {
@@ -272,8 +248,12 @@ func syntheticOptions(t *testing.T, binary string, port int, network string, han
 printf '%s\n' "$$" > "$HOMEVPN_TEST_XRAY_PID_FILE"
 exec "$HOMEVPN_TEST_XRAY_BINARY" "$@"
 `, 0o700)
-	path := writeFixture(t, base, "node.json", syntheticClient(port, network), 0o600)
-	return probeOptions{configPath: path, target: target, xray: wrapper, timeout: 8 * time.Second, roots: roots}
+	outbound, err := parseVLESS(syntheticLink(port, "type=tcp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound.StreamSettings["network"] = network
+	return probeOptions{outbound: outbound, target: target, xray: wrapper, timeout: 8 * time.Second, roots: roots}
 }
 
 func waitForCancellation(requested chan<- struct{}) http.HandlerFunc {

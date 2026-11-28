@@ -13,11 +13,11 @@ import (
 )
 
 type probeOptions struct {
-	configPath string
-	target     *url.URL
-	xray       string
-	timeout    time.Duration
-	roots      *x509.CertPool
+	outbound xrayOutbound
+	target   *url.URL
+	xray     string
+	timeout  time.Duration
+	roots    *x509.CertPool
 }
 
 type probeResult struct {
@@ -48,10 +48,6 @@ func runProbe(parent context.Context, opts probeOptions) (result probeResult) {
 		return probeFailure(ctx, "")
 	}
 
-	outbound, err := readVLESSOutbound(opts.configPath)
-	if err != nil {
-		return probeFailure(ctx, "invalid_config")
-	}
 	dir, err := os.MkdirTemp("", "homevpn-probe-")
 	if err != nil {
 		return probeFailure(ctx, "setup")
@@ -65,7 +61,7 @@ func runProbe(parent context.Context, opts probeOptions) (result probeResult) {
 	if err != nil {
 		return probeFailure(ctx, "setup")
 	}
-	config, err := writeClientConfig(dir, outbound, proxy)
+	config, err := writeClientConfig(dir, opts.outbound, proxy)
 	if err != nil {
 		return probeFailure(ctx, "setup")
 	}

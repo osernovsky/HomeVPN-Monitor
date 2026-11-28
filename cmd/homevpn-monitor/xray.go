@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"io"
 	"net"
 	"os"
@@ -16,87 +15,12 @@ import (
 )
 
 const (
-	loopback      = "127.0.0.1"
-	socksUser     = "homevpn"
-	maxConfigSize = 1 << 20
+	loopback  = "127.0.0.1"
+	socksUser = "homevpn"
 )
 
-type xrayOutbound struct {
-	Protocol       string          `json:"protocol"`
-	Settings       json.RawMessage `json:"settings"`
-	StreamSettings json.RawMessage `json:"streamSettings,omitempty"`
-}
-
-var errInvalidConfig = errors.New("invalid Xray client configuration")
-
-func readVLESSOutbound(path string) (xrayOutbound, error) {
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return xrayOutbound{}, errInvalidConfig
-	}
-	file, err := os.Open(path)
-	if err != nil {
-		return xrayOutbound{}, err
-	}
-	defer file.Close()
-	raw, err := io.ReadAll(io.LimitReader(file, maxConfigSize+1))
-	if err != nil || len(raw) > maxConfigSize {
-		return xrayOutbound{}, errInvalidConfig
-	}
-	var config struct {
-		Outbounds []xrayOutbound `json:"outbounds"`
-	}
-	if err := json.Unmarshal(raw, &config); err != nil {
-		return xrayOutbound{}, errInvalidConfig
-	}
-	var selected xrayOutbound
-	for _, outbound := range config.Outbounds {
-		if outbound.Protocol != "vless" {
-			continue
-		}
-		if selected.Protocol != "" || !singleVLESSNode(outbound.Settings) {
-			return xrayOutbound{}, errInvalidConfig
-		}
-		selected = outbound
-	}
-	if selected.Protocol == "" {
-		return xrayOutbound{}, errInvalidConfig
-	}
-	return selected, nil
-}
-
-func singleVLESSNode(raw json.RawMessage) bool {
-	var settings struct {
-		Address string          `json:"address"`
-		Port    uint16          `json:"port"`
-		ID      string          `json:"id"`
-		Reverse json.RawMessage `json:"reverse"`
-		VNext   []struct {
-			Address string `json:"address"`
-			Port    uint16 `json:"port"`
-			Users   []struct {
-				ID      string          `json:"id"`
-				Reverse json.RawMessage `json:"reverse"`
-			} `json:"users"`
-		} `json:"vnext"`
-	}
-	if json.Unmarshal(raw, &settings) != nil {
-		return false
-	}
-	if settings.Address != "" {
-		return settings.Port != 0 && settings.ID != "" && len(settings.VNext) == 0 && len(settings.Reverse) == 0
-	}
-	if len(settings.VNext) != 1 {
-		return false
-	}
-	node := settings.VNext[0]
-	return node.Address != "" && node.Port != 0 && len(node.Users) == 1 &&
-		node.Users[0].ID != "" && len(node.Users[0].Reverse) == 0
-}
-
 func writeClientConfig(dir string, outbound xrayOutbound, proxy socksProxy) (string, error) {
-	// Only the selected VLESS outbound is copied. In particular, there is no
-	// freedom outbound, user-supplied routing, logging, or listener.
+	// The URI supplies only one VLESS outbound. The listener is generated here.
 	config := map[string]any{
 		"log": map[string]string{"access": "none", "error": "none", "loglevel": "none"},
 		"inbounds": []any{map[string]any{
