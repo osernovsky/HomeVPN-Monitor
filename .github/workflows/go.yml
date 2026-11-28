@@ -1,0 +1,84 @@
+name: Go
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      GOTOOLCHAIN: local
+      XRAY_TEST_PATTERN: '^Test(XrayProbe|XrayAcceptsGeneratedVLESSConfigs)$'
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version: '1.27.4'
+          cache: false
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [[ -n "$unformatted" ]]; then
+            printf 'Run gofmt on these files:\n%s\n' "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: Go unit tests
+        run: go test -count=1 -skip "$XRAY_TEST_PATTERN" ./...
+
+      - name: Install verified Xray-core
+        env:
+          XRAY_VERSION: v26.11.9
+          XRAY_SHA256: b651f7e1d9966ee2c1b1ee1bf8b52c72771824d3065dce96bbc8bcc19ed95f82
+        run: |
+          xray_dir="$RUNNER_TEMP/homevpn-xray"
+          archive="$xray_dir/Xray-linux-64.zip"
+          mkdir -p "$xray_dir"
+          curl --disable --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 90 \
+            --retry 2 --output "$archive" \
+            "https://github.com/XTLS/Xray-core/releases/download/$XRAY_VERSION/Xray-linux-64.zip"
+          printf '%s  %s\n' "$XRAY_SHA256" "$archive" | sha256sum --check --strict
+          unzip -p "$archive" xray > "$xray_dir/xray"
+          chmod +x "$xray_dir/xray"
+          "$xray_dir/xray" version
+          printf 'HOMEVPN_TEST_XRAY=%s\n' "$xray_dir/xray" >> "$GITHUB_ENV"
+
+      - name: Xray integration tests
+        run: |
+          test -x "$HOMEVPN_TEST_XRAY"
+          test_log="$RUNNER_TEMP/homevpn-xray-tests.log"
+          go test -count=1 -v -run "$XRAY_TEST_PATTERN" ./... | tee "$test_log"
+
+          # go test can succeed when its selection is empty or a test skips.
+          for test_name in TestXrayProbe TestXrayAcceptsGeneratedVLESSConfigs; do
+            if ! grep -q "^--- PASS: $test_name (" "$test_log"; then
+              printf '::error::%s did not report a pass\n' "$test_name"
+              exit 1
+            fi
+          done
+          if grep -Eq '^[[:space:]]*--- SKIP:' "$test_log"; then
+            printf '::error::An Xray integration test was skipped\n'
+            exit 1
+          fi
+
+      - name: Build CLI
+        run: go build -o "$RUNNER_TEMP/homevpn-monitor" ./cmd/homevpn-monitor
